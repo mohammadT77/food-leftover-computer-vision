@@ -77,6 +77,7 @@ int main( int argc, char** argv )
     }
     int j = 0;
     Mat output_image = Mat::zeros(src.size(), src.type());
+    Mat nonObject_output_image = src.clone();
 
     for( size_t i = 0; i < filteredCircles.size(); i++ )
     {
@@ -95,6 +96,12 @@ int main( int argc, char** argv )
                     Vec3b pixel = src.at<Vec3b>(row,col);
                     output_image.at<Vec3b>(row,col) = pixel;
                 }
+                if (insideCircle(c[0],c[1],col,row, radius + 5)){
+                    // Vec3b pixel = src.at<Vec3b>(row,col);
+                    nonObject_output_image.at<Vec3b>(row,col)[0] = 0;
+                    nonObject_output_image.at<Vec3b>(row,col)[1] = 0;
+                    nonObject_output_image.at<Vec3b>(row,col)[2] = 0;
+                }
             }
         }
 
@@ -102,9 +109,12 @@ int main( int argc, char** argv )
         j++;
     }
 
-    imwrite("../detection/"+to_string(j)+".jpg", output_image);
+    imwrite("../detection/object"+to_string(j)+".jpg", output_image);
+    imwrite("../detection/nonObject"+to_string(j)+".jpg", nonObject_output_image);
 
     imshow("detected plate", output_image);
+    imshow("not detected objects", nonObject_output_image);
+
     waitKey();
     
    return 0;
