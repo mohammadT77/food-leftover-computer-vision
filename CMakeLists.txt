@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 project( CV_FinalProject )
-find_package( OpenCV REQUIRED core highgui imgproc imgcodecs ml objdetect imgcodecs )
+find_package( OpenCV REQUIRED core highgui imgproc imgcodecs ml objdetect imgcodecs xfeatures2d)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 set(CMAKE_CXX_STANDARD 20)
