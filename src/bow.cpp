@@ -153,7 +153,7 @@ vector<int> knn(const map<int, vector<Mat>>& images, const map<int, vector<Mat>>
 }
 
 int main() {
-    map<int, vector<Mat>> image_dictionary = load_dictionary("../data/bow_dictionary/train");
+    map<int, vector<Mat>> image_dictionary = load_dictionary("../data/bow_dictionary");
     // map<int, vector<Mat>> test_dictionary = load_dictionary("../data/bow_dictionary/test");
     
     vector<Mat> descriptor_list = {};
