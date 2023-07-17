@@ -1,43 +1,17 @@
-#include <iostream>
-#include "opencv2/opencv.hpp"
-#include "opencv2/imgproc.hpp"
-#include "opencv2/highgui.hpp"
-#include "opencv2/core.hpp"
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/objdetect.hpp>
-#include <opencv2/ml.hpp>
-#include <opencv2/opencv_modules.hpp>
-#include <opencv2/xfeatures2d.hpp>
-#include <filesystem>
-#include <queue>
-#include <numeric>
-#include <cmath>
-#include <iomanip>
+#include "bow.hpp"
 
 using namespace std;
 using namespace cv;
 using namespace cv::xfeatures2d;
+using namespace cv::ml;
 
 
-int getCategoryId(const string& filename) {
+
+int getImageCategoryId(const string& filename) {
     string id_str = filename.substr(0, filename.find("_"));
     return stoi(id_str);
 }
 
-
-vector<Mat> load_dictionary(const string& folder, int category) {
-    vector<Mat> images;
-    for (const auto& image : std::filesystem::directory_iterator(folder)) {
-        string filename = image.path().filename().string();
-        int img_category = getCategoryId(filename);
-        
-        if (img_category != category) continue;
-
-        Mat img = imread(folder+"/"+filename);
-        images.push_back(img);
-    }
-    return images;
-}
 
 // Takes all images and converts them to grayscale.
 // Returns a dictionary that holds all images category by category.
@@ -45,7 +19,7 @@ map<int, vector<Mat>> load_dictionary(const string& folder) {
     map<int, vector<Mat>> images;
     for (const auto& image : std::filesystem::directory_iterator(folder)) {
         string filename = image.path().filename().string();
-        int category = getCategoryId(filename);
+        int category = getImageCategoryId(filename);
         Mat img = imread(folder+"/"+filename);
         images[category].push_back(img);
     }
@@ -72,15 +46,6 @@ map<int, vector<Mat>> extract_features(const map<int, vector<Mat>>& images, vect
             Mat des;
             calculate_features(img, kp, des);
             
-            // // <==DEBUG==>
-            // Mat _img = img.clone();
-            // for (const auto &_kp: kp)
-            //     circle(_img, _kp.pt, 1, Scalar(0, 255, 0), 1, 8, 0);
-
-            // imshow("s", _img);
-            // waitKey(0);
-            // // <==DEBUG==>
-            
             descriptor_list.push_back(des);
             features.push_back(des);
         }
@@ -90,22 +55,14 @@ map<int, vector<Mat>> extract_features(const map<int, vector<Mat>>& images, vect
 }
 
 
-Mat kmeans(int k, const vector<Mat>& descriptor_list) {
-    TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.01);
-    int attempts = 20;
-    int flags = KMEANS_RANDOM_CENTERS;
-    
-    cv::BOWKMeansTrainer trainer(k, criteria, attempts, flags);
+Mat kmeans(int k, const vector<Mat>& descriptor_list, KMeanConfig config) {
+    cv::BOWKMeansTrainer trainer(k, config.criteria, config.attempts, config.flags);
 
     for (const auto& descriptor: descriptor_list) {
         trainer.add(descriptor);
     }
     
-    Mat clusters = trainer.cluster();
-    // cout << clusters.type() << clusters.size << endl;
-    // clusters.convertTo(clusters, CV_8U);
-    // cout << clusters.type() << clusters.size << endl;
-    return clusters;
+    return trainer.cluster();
 }
 
 
@@ -146,15 +103,6 @@ map<int, vector<Mat>> image_class(const map<int, vector<Mat>>& all_bow, Mat& cen
     for (const auto& entry : all_bow) {
         const int key = entry.first;
         vector<Mat> category = image_class(entry.second, centers);
-        // const vector<Mat>& value = entry.second;
-        // for (const auto& img : value) {
-        //     Mat histogram = Mat::zeros(1, centers.rows, CV_32F);
-        //     for (int i = 0; i < img.rows; i++) {
-        //         int ind = find_index(img.row(i), centers);
-        //         histogram.at<float>(0, ind) += 1;
-        //     }
-        //     category.push_back(histogram);
-        // }
         dict_feature[key] = category;
     }
     return dict_feature;
@@ -208,67 +156,32 @@ vector<int> knn(const map<int, vector<Mat>>& images, const map<int, vector<Mat>>
     return {num_test, correct_predict};
 }
 
-
-void assignDescriptorsToVisualWordsBF(const vector<KeyPoint>& keyPoints, const Mat& descriptors, const Mat& clusters, vector<int>& visualWords) {
+void assignDescriptorsToVisualWordsBF(const Mat& image, const vector<KeyPoint>& keyPoints, const Mat& descriptors, const Mat& clusters, map<int, Point2f>& visualWords) {
     cv::BFMatcher matcher(cv::NORM_L2);
     vector<vector<DMatch>> matches;
-    matcher.knnMatch(descriptors, clusters, matches, 1);
-    // cout << "desc size: " << descriptors.size() << endl;
+    matcher.knnMatch(descriptors, clusters, matches, 2);
+    
+    const float ratioThreshold = 0.7f; // Ratio threshold for discarding ambiguous matches
+
     for (const vector<DMatch>& match : matches) {
-        int visualWordIndex = match[0].trainIdx;
-        // cout << visualWordIndex << ',';
-        visualWords.push_back(visualWordIndex);
+        if (match[0].distance < ratioThreshold * match[1].distance) {
+            int visualWordIndex = match[0].trainIdx;
+            visualWords[visualWordIndex] = keyPoints[match[0].queryIdx].pt;
+        }
     }
-    // cout << endl;
+
 }
 
-void assignDescriptorsToVisualWords(const Mat& descriptors, const Mat& clusters, vector<int>& visualWords) {
-    cv::flann::Index flannIndex(clusters, cv::flann::KDTreeIndexParams(1)); // Build KD-Tree for efficient search
-
-    for (int i = 0; i < descriptors.rows; i++) {
-        Mat descriptor = descriptors.row(i);
-
-        Mat indices, distances;
-        flannIndex.knnSearch(descriptor, indices, distances, 1, cv::flann::SearchParams());
-
-        visualWords.push_back(indices.at<int>(0));
-    }
-}
-
-// TODO: Create histogram for the tray image
-void createHistogram(const vector<int>& visualWords, int numVisualWords, Mat& histogram) {
+void createHistogram(const map<int, Point2f>& visualWords, int numVisualWords, Mat& histogram) {
     histogram = Mat::zeros(1, numVisualWords, CV_32F);
-    // cout << "Num VW: " << numVisualWords << endl;
-    for (int visualWordIndex : visualWords) {
-        histogram.at<float>(0, visualWordIndex) += 1;
+    for (const auto& visualWord : visualWords) {
+        histogram.at<float>(0, visualWord.first) += 1;
     }
-}
-
-// TODO: Normalize the histogram
-void normalizeHistogram(Mat& histogram) {
     float sum = cv::sum(histogram)[0];
     histogram /= sum;
 }
 
-struct DistanceIndexPair {
-    double distance;
-    int classIndex;
 
-    bool operator<(const DistanceIndexPair& other) const {
-        // Reverse the comparison to maintain a min-heap
-        return distance > other.distance;
-    }
-
-    bool operator==(const DistanceIndexPair& other) const {
-        // Reverse the comparison to maintain a min-heap
-        return classIndex == other.classIndex;
-    }
-
-    friend ostream& operator<<(ostream& os, const DistanceIndexPair& pair) {
-        os << pair.classIndex << " (" << fixed << setprecision(2) << pair.distance << ")";
-        return os;
-    }
-};
 
 vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, const map<int, vector<Mat>>& bow) {
     priority_queue<DistanceIndexPair> closestDistances;
@@ -314,42 +227,20 @@ vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, con
 
 
 
-void process_image(const Mat& image, int k, const Mat& words, const map<int, vector<Mat>>& bow) {
+void process_image(const Mat& image, const Mat& words, const map<int, vector<Mat>>& bow) {
     // Extracting orb features
     vector<KeyPoint> keyPoint;
     Mat descriptors;
-    calculate_features(image, keyPoint, descriptors);
-
-    // // <==DEBUG==>
-    // Mat _img = image.clone();
-    // for (const auto &_kp: keyPoint)
-    //     circle(_img, _kp.pt, 1, Scalar(0, 255, 0), 2, 8, 0);
-
-    // imshow("s", _img);
-    // waitKey(0);
-    // // <==DEBUG==>
-
-    // // // Clustering features
-    // TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 1.0);
-    // int attempts = 10;
-    // int flags = KMEANS_RANDOM_CENTERS;
-    
-    // cv::BOWKMeansTrainer trainer(k, criteria, attempts, flags);
-
-    // trainer.add(descriptor);
-    
-    // descriptor = trainer.cluster();    
+    calculate_features(image, keyPoint, descriptors); 
 
     // Assign descriptors to visual words
-    vector<int> visualWords;
-    assignDescriptorsToVisualWordsBF(keyPoint, descriptors, words, visualWords);
+    map<int, Point2f> visualWords;
+    assignDescriptorsToVisualWordsBF(image, keyPoint, descriptors, words, visualWords);
 
     // Create histogram for the tray image
     Mat histogram;
     createHistogram(visualWords, words.rows, histogram);
 
-    // Normalize the histogram
-    normalizeHistogram(histogram);
 
     // Compare histograms and perform classification
     vector<DistanceIndexPair> res = compareHistogramsAndClassify(histogram, bow);
@@ -358,56 +249,14 @@ void process_image(const Mat& image, int k, const Mat& words, const map<int, vec
         cout << d << ',';
     }
     cout << endl;
-    
-
 }
 
-int main() {
-    map<int, vector<Mat>> breadsalad_dictionary = load_dictionary("../data/bow_dictionary/12_13");
-    map<int, vector<Mat>> primi_dictionary = load_dictionary("../data/bow_dictionary/primi");
-    map<int, vector<Mat>> secondi_dictionary = load_dictionary("../data/bow_dictionary/secondi");
-    // map<int, vector<Mat>> test_dictionary = load_dictionary("../data/bow_dictionary/test");
-    
-    vector<Mat> breadsalad_descriptor_list = {};
-    vector<Mat> primi_descriptor_list = {};
-    vector<Mat> secondi_descriptor_list = {};
-    map<int, vector<Mat>> breadsalad_feat_vectors = extract_features(breadsalad_dictionary, breadsalad_descriptor_list);
-    map<int, vector<Mat>> primi_feat_vectors = extract_features(primi_dictionary, primi_descriptor_list);
-    map<int, vector<Mat>> secondi_feat_vectors = extract_features(secondi_dictionary, secondi_descriptor_list);
 
+void prepareBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector<Mat>>& features, Mat& visualWords, map<int, vector<Mat>>& bow) {
+    vector<Mat> descriptors_list = {};
 
-    Mat breadsalad_words = kmeans(200, breadsalad_descriptor_list);
-    Mat primi_words = kmeans(1000, primi_descriptor_list);
-    Mat secondi_words = kmeans(1300, secondi_descriptor_list);
-    
-    map<int, vector<Mat>> breadsalad_bow = image_class(breadsalad_feat_vectors, breadsalad_words);  // Bag of Visual words
-    map<int, vector<Mat>> primi_bow = image_class(primi_feat_vectors, primi_words);  // Bag of Visual words
-    map<int, vector<Mat>> secondi_bow = image_class(secondi_feat_vectors, secondi_words);  // Bag of Visual words
-
-    // TODO: complete
-    // process_image(imread("../data/bow_dictionary/refined/1_tray1.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/2_tray2.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/3_tray5.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/4_tray6.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/5_tray4.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/6_tray6.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/7_tray7.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/8_tray5.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/9_tray8.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/10_tray5.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/11_tray7.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/12_tray8.jpg"),30, words, bow);
-    // process_image(imread("../data/bow_dictionary/refined/13_tray1.jpg"),30, words, bow);
-    cout << endl;
-    process_image(imread("../data/bow_dictionary/13_tray1.jpg"),30, breadsalad_words, breadsalad_bow);
-    process_image(imread("../data/bow_dictionary/12_tray7.jpg"),30, breadsalad_words, breadsalad_bow);
-
-    process_image(imread("../data/tray1/food_image.jpg"),30, primi_words, primi_bow);
-    process_image(imread("../data/tray2/food_image.jpg"),30, primi_words, primi_bow);
-
-    process_image(imread("../data/tray1/food_image.jpg"),30, secondi_words, secondi_bow);
-    process_image(imread("../data/tray2/food_image.jpg"),30, secondi_words, secondi_bow);
-    // process_image(imread("../data/bow_dictionary/3_tray5.jpg"),30, words, bow);
-
-    return 0;
+    images = load_dictionary(config.dir_path);
+    bow = extract_features(images, descriptors_list);
+    visualWords = kmeans(config.k, descriptors_list, config.kmean_config);
+    bow = image_class(features, visualWords);    
 }
