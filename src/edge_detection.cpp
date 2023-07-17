@@ -42,7 +42,7 @@ int main( int argc, char** argv )
    namedWindow( window_name2, WINDOW_AUTOSIZE );
    imshow( window_name2, src );
    blur( src_gray, src_gray, Size(5,5) );
-   Canny(src_gray,  detected_edges, 40, 150, 3 );
+   Canny(src_gray,  detected_edges, 30, 50, 3 );
 
    imshow( window_name, detected_edges );
    waitKey(0);
@@ -58,7 +58,7 @@ int main( int argc, char** argv )
       double area = cv::contourArea(*it);
 
       // Check if the area is less than 30
-      if (area < 20) {
+      if (area < 30) {
          // Erase the contour if it doesn't meet the criteria
          it = contours.erase(it);
       } else {
