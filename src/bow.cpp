@@ -5,7 +5,7 @@ using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace cv::ml;
 
-
+KMeanConfig default_kmean_config = KMeanConfig();
 
 int getImageCategoryId(const string& filename) {
     string id_str = filename.substr(0, filename.find("_"));
@@ -161,7 +161,7 @@ void assignDescriptorsToVisualWordsBF(const Mat& image, const vector<KeyPoint>& 
     vector<vector<DMatch>> matches;
     matcher.knnMatch(descriptors, clusters, matches, 2);
     
-    const float ratioThreshold = 0.7f; // Ratio threshold for discarding ambiguous matches
+    const float ratioThreshold = 0.8f; // Ratio threshold for discarding ambiguous matches
 
     for (const vector<DMatch>& match : matches) {
         if (match[0].distance < ratioThreshold * match[1].distance) {
@@ -212,12 +212,6 @@ vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, con
     vector<DistanceIndexPair> closestClasses;
     while (!closestDistances.empty()) {
         DistanceIndexPair new_item = closestDistances.top();
-        // if (std::find(closestClasses.begin(), closestClasses.end(), new_item) != closestClasses.end()){  // Repetitive item
-        //     closestDistances.pop();
-        //     cout << "Item " << new_item << " poped!" << endl;
-        //     continue;
-        // }
-        // cout << "Item " << new_item << " added!" << endl;
         closestClasses.push_back(new_item);
         closestDistances.pop();
     }
@@ -227,7 +221,7 @@ vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, con
 
 
 
-void process_image(const Mat& image, const Mat& words, const map<int, vector<Mat>>& bow) {
+vector<DistanceIndexPair> process_image(const Mat& image, const Mat& words, const map<int, vector<Mat>>& bow) {
     // Extracting orb features
     vector<KeyPoint> keyPoint;
     Mat descriptors;
@@ -241,14 +235,10 @@ void process_image(const Mat& image, const Mat& words, const map<int, vector<Mat
     Mat histogram;
     createHistogram(visualWords, words.rows, histogram);
 
-
     // Compare histograms and perform classification
-    vector<DistanceIndexPair> res = compareHistogramsAndClassify(histogram, bow);
-    
-    for (const auto& d: res) {
-        cout << d << ',';
-    }
-    cout << endl;
+    vector<DistanceIndexPair> result = compareHistogramsAndClassify(histogram, bow);
+
+    return result;
 }
 
 
@@ -256,7 +246,37 @@ void prepareBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector
     vector<Mat> descriptors_list = {};
 
     images = load_dictionary(config.dir_path);
-    bow = extract_features(images, descriptors_list);
+    features = extract_features(images, descriptors_list);
     visualWords = kmeans(config.k, descriptors_list, config.kmean_config);
     bow = image_class(features, visualWords);    
 }
+
+vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector<Mat>>& features, Mat& visualWords, map<int, vector<Mat>>& bow) {
+    prepareBOW(config, images, features, visualWords, bow);
+    
+    vector<DistanceIndexPair> result;
+    for (const auto& entry: images) {
+        const vector<Mat>& categoryImages = entry.second;
+        for (const auto& pair: process_image(categoryImages[0], visualWords, bow)){
+            if (pair.classIndex == entry.first){
+                result.push_back(pair);
+                break;
+            }
+            
+        }
+    }
+    return result;
+}
+vector<DistanceIndexPair> process_image(const Mat& image, const vector<DistanceIndexPair>& trainDists, const Mat& words, const map<int, vector<Mat>>& bow) {
+    vector<DistanceIndexPair> imageDists = process_image(image, words,bow);
+    vector<DistanceIndexPair> result;
+
+    for (const auto& trainDist: trainDists) {
+        for (const auto& imgDist: imageDists) {
+            if (trainDist.classIndex == imgDist.classIndex) 
+                result.push_back({abs(imgDist.distance-trainDist.distance), imgDist.classIndex});
+        }   
+    }
+    return result;
+}
+

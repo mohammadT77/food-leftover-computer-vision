@@ -65,7 +65,9 @@ std::vector<int> knn(const std::map<int, std::vector<cv::Mat>>& images, const st
 void assignDescriptorsToVisualWordsBF(const cv::Mat& image, const std::vector<cv::KeyPoint>& keyPoints, const cv::Mat& descriptors, const cv::Mat& clusters, std::map<int, cv::Point2f>& visualWords);
 void createHistogram(const std::map<int, cv::Point2f>& visualWords, int numVisualWords, cv::Mat& histogram);
 std::vector<DistanceIndexPair> compareHistogramsAndClassify(const cv::Mat& histogram, const std::map<int, std::vector<cv::Mat>>& bow);
-void process_image(const cv::Mat& image, const cv::Mat& words, const std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const cv::Mat& words, const std::map<int, std::vector<cv::Mat>>& bow);
 void prepareBOW(BOWConfig config, std::map<int, std::vector<cv::Mat>>& images, std::map<int, std::vector<cv::Mat>>& features, cv::Mat& visualWords, std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, std::map<int, std::vector<cv::Mat>>& images, std::map<int, std::vector<cv::Mat>>& features, cv::Mat& visualWords, std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const std::vector<DistanceIndexPair>& trainDists, const cv::Mat& words, const std::map<int, std::vector<cv::Mat>>& bow);
 
 #endif
