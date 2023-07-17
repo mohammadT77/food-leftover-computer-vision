@@ -24,6 +24,21 @@ int getCategoryId(const string& filename) {
     return stoi(id_str);
 }
 
+
+vector<Mat> load_dictionary(const string& folder, int category) {
+    vector<Mat> images;
+    for (const auto& image : std::filesystem::directory_iterator(folder)) {
+        string filename = image.path().filename().string();
+        int img_category = getCategoryId(filename);
+        
+        if (img_category != category) continue;
+
+        Mat img = imread(folder+"/"+filename);
+        images.push_back(img);
+    }
+    return images;
+}
+
 // Takes all images and converts them to grayscale.
 // Returns a dictionary that holds all images category by category.
 map<int, vector<Mat>> load_dictionary(const string& folder) {
@@ -37,10 +52,15 @@ map<int, vector<Mat>> load_dictionary(const string& folder) {
     return images;
 }
 
+void calculate_features(const Mat& image, vector<KeyPoint>& keyPoint, Mat& descriptors ) {
+    shared_ptr<ORB> orb = ORB::create();
+    orb->detectAndCompute(image, noArray(), keyPoint, descriptors);
+    descriptors.convertTo(descriptors, CV_32F);
+}
 
-map<int, vector<Mat>> sift_features(const map<int, vector<Mat>>& images, vector<Mat>& descriptor_list) {
-    map<int, vector<Mat>> sift_vectors;
-    shared_ptr<SURF> sift = SURF::create();
+map<int, vector<Mat>> extract_features(const map<int, vector<Mat>>& images, vector<Mat>& descriptor_list) {
+    map<int, vector<Mat>> feat_vectors;
+    shared_ptr<ORB> orb = ORB::create();
 
     for (const auto& entry : images) {
         const int key = entry.first;
@@ -50,7 +70,7 @@ map<int, vector<Mat>> sift_features(const map<int, vector<Mat>>& images, vector<
         for (const auto& img : value) {
             vector<KeyPoint> kp;
             Mat des;
-            sift->detectAndCompute(img, noArray(), kp, des);
+            calculate_features(img, kp, des);
             
             // // <==DEBUG==>
             // Mat _img = img.clone();
@@ -64,14 +84,14 @@ map<int, vector<Mat>> sift_features(const map<int, vector<Mat>>& images, vector<
             descriptor_list.push_back(des);
             features.push_back(des);
         }
-        sift_vectors[key] = features;
+        feat_vectors[key] = features;
     }
-    return sift_vectors;
+    return feat_vectors;
 }
 
 
 Mat kmeans(int k, const vector<Mat>& descriptor_list) {
-    TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.5);
+    TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.01);
     int attempts = 20;
     int flags = KMEANS_RANDOM_CENTERS;
     
@@ -81,7 +101,11 @@ Mat kmeans(int k, const vector<Mat>& descriptor_list) {
         trainer.add(descriptor);
     }
     
-    return trainer.cluster();
+    Mat clusters = trainer.cluster();
+    // cout << clusters.type() << clusters.size << endl;
+    // clusters.convertTo(clusters, CV_8U);
+    // cout << clusters.type() << clusters.size << endl;
+    return clusters;
 }
 
 
@@ -291,11 +315,10 @@ vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, con
 
 
 void process_image(const Mat& image, int k, const Mat& words, const map<int, vector<Mat>>& bow) {
-    // Extracting sift features
-    shared_ptr<SURF> sift = SURF::create();    
+    // Extracting orb features
     vector<KeyPoint> keyPoint;
     Mat descriptors;
-    sift->detectAndCompute(image, noArray(), keyPoint, descriptors);
+    calculate_features(image, keyPoint, descriptors);
 
     // // <==DEBUG==>
     // Mat _img = image.clone();
@@ -340,34 +363,51 @@ void process_image(const Mat& image, int k, const Mat& words, const map<int, vec
 }
 
 int main() {
-    map<int, vector<Mat>> image_dictionary = load_dictionary("../data/bow_dictionary/refined");
+    map<int, vector<Mat>> breadsalad_dictionary = load_dictionary("../data/bow_dictionary/12_13");
+    map<int, vector<Mat>> primi_dictionary = load_dictionary("../data/bow_dictionary/primi");
+    map<int, vector<Mat>> secondi_dictionary = load_dictionary("../data/bow_dictionary/secondi");
     // map<int, vector<Mat>> test_dictionary = load_dictionary("../data/bow_dictionary/test");
     
-    vector<Mat> descriptor_list = {};
-    // vector<Mat> _ = {};
-    map<int, vector<Mat>> sift_vectors = sift_features(image_dictionary, descriptor_list);
-    // map<int, vector<Mat>> test_sift_features = sift_features(test_dictionary, _);
+    vector<Mat> breadsalad_descriptor_list = {};
+    vector<Mat> primi_descriptor_list = {};
+    vector<Mat> secondi_descriptor_list = {};
+    map<int, vector<Mat>> breadsalad_feat_vectors = extract_features(breadsalad_dictionary, breadsalad_descriptor_list);
+    map<int, vector<Mat>> primi_feat_vectors = extract_features(primi_dictionary, primi_descriptor_list);
+    map<int, vector<Mat>> secondi_feat_vectors = extract_features(secondi_dictionary, secondi_descriptor_list);
 
 
-    Mat words = kmeans(10000, descriptor_list);
+    Mat breadsalad_words = kmeans(200, breadsalad_descriptor_list);
+    Mat primi_words = kmeans(1000, primi_descriptor_list);
+    Mat secondi_words = kmeans(1300, secondi_descriptor_list);
     
-    map<int, vector<Mat>> bow = image_class(sift_vectors, words);  // Bag of Visual words
+    map<int, vector<Mat>> breadsalad_bow = image_class(breadsalad_feat_vectors, breadsalad_words);  // Bag of Visual words
+    map<int, vector<Mat>> primi_bow = image_class(primi_feat_vectors, primi_words);  // Bag of Visual words
+    map<int, vector<Mat>> secondi_bow = image_class(secondi_feat_vectors, secondi_words);  // Bag of Visual words
 
     // TODO: complete
-    process_image(imread("../data/bow_dictionary/refined/1_tray1.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/2_tray2.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/3_tray5.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/4_tray6.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/5_tray4.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/6_tray6.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/7_tray7.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/8_tray5.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/9_tray8.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/10_tray5.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/11_tray7.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/12_tray8.jpg"),30, words, bow);
-    process_image(imread("../data/bow_dictionary/refined/13_tray1.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/1_tray1.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/2_tray2.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/3_tray5.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/4_tray6.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/5_tray4.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/6_tray6.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/7_tray7.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/8_tray5.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/9_tray8.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/10_tray5.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/11_tray7.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/12_tray8.jpg"),30, words, bow);
+    // process_image(imread("../data/bow_dictionary/refined/13_tray1.jpg"),30, words, bow);
+    cout << endl;
+    process_image(imread("../data/bow_dictionary/13_tray1.jpg"),30, breadsalad_words, breadsalad_bow);
+    process_image(imread("../data/bow_dictionary/12_tray7.jpg"),30, breadsalad_words, breadsalad_bow);
 
+    process_image(imread("../data/tray1/food_image.jpg"),30, primi_words, primi_bow);
+    process_image(imread("../data/tray2/food_image.jpg"),30, primi_words, primi_bow);
+
+    process_image(imread("../data/tray1/food_image.jpg"),30, secondi_words, secondi_bow);
+    process_image(imread("../data/tray2/food_image.jpg"),30, secondi_words, secondi_bow);
+    // process_image(imread("../data/bow_dictionary/3_tray5.jpg"),30, words, bow);
 
     return 0;
 }
