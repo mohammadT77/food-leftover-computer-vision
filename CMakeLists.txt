@@ -3,6 +3,6 @@ project( CV_FinalProject )
 find_package( OpenCV REQUIRED core highgui imgproc imgcodecs )
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-add_executable( main src/main.cpp)
+add_executable( main src/main.cpp src/segmentation.cpp)
 
-target_link_libraries( main ${OpenCV_LIBS})
+target_link_libraries(main ${OpenCV_LIBS})
