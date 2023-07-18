@@ -403,42 +403,67 @@ Mat performMeanShiftClustering(const Mat& image, float spatialRadius, float colo
 }
 
 int main() {
-    // Load the tray image
     Mat image = imread("../data/tray2/food_image.jpg");
     if (image.empty()) {
         cout << "Failed to load image." << endl;
         return -1;
     }
-    
-    // Define the bounding box for the foreground object
-    Rect boundingBox(1, 1, image.cols, image.rows);
 
-    // Perform bounds checking for the ROI
-    boundingBox.x = max(0, boundingBox.x);
-    boundingBox.y = max(0, boundingBox.y);
-    boundingBox.width = min(boundingBox.width, image.cols - boundingBox.x);
-    boundingBox.height = min(boundingBox.height, image.rows - boundingBox.y);
+	Mat smoothImage;
+	// int i = 10;
+	GaussianBlur(image, smoothImage, Size(31, 31), 0);
+	// bilateralFilter(image, smoothImage, i, i*2, i/2);
+	imshow("SS", smoothImage);
+	waitKey(0);
 
-    // Create a mask to indicate the foreground and background regions
-    Mat mask(image.size(), CV_8UC1, Scalar(GC_BGD));
-    mask(boundingBox).setTo(Scalar(GC_PR_FGD));  // Set the bounding box region as probable foreground
+    // Convert the image to grayscale
+    Mat grayImage;	
+    cvtColor(image, grayImage, COLOR_BGR2GRAY);
 
-    // Run the GrabCut algorithm
-    Mat result;
-    grabCut(image, mask, boundingBox, Mat(), Mat(), 5, GC_INIT_WITH_RECT);
+    // Apply thresholding to obtain a binary image
+    Mat binaryImage;
+    threshold(grayImage, binaryImage, 0, 255, THRESH_BINARY_INV | THRESH_OTSU);
 
-    // Extract the foreground region based on the final mask
-    Mat foregroundMask = (mask == GC_PR_FGD) | (mask == GC_FGD);
-    Mat foregroundImage;
-    image.copyTo(foregroundImage, foregroundMask);
+    // Perform morphological operations to remove noise and close gaps
+    Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+    morphologyEx(binaryImage, binaryImage, MORPH_OPEN, kernel, Point(-1, -1), 2);
+    dilate(binaryImage, binaryImage, kernel, Point(-1, -1), 2);
 
-    // Display the original image, mask, and extracted foreground
+    // Perform the watershed algorithm
+    Mat markers;
+    distanceTransform(binaryImage, markers, DIST_L2, 5);
+    normalize(markers, markers, 0, 255, NORM_MINMAX);
+    markers.convertTo(markers, CV_32SC1);  // Convert markers to the required type
+
+    // Apply the watershed algorithm
+    watershed(smoothImage, markers);
+
+    // Generate random colors for visualization
+    vector<Vec3b> colors;
+    for (int i = 0; i < 3; i++) {
+        int b = theRNG().uniform(0, 256);
+        int g = theRNG().uniform(0, 256);
+        int r = theRNG().uniform(0, 256);
+        colors.push_back(Vec3b(b, g, r));
+    }
+	// cout << markers << endl;
+    // Create a colored output image based on the watershed result
+    Mat outputImage = Mat::zeros(image.size(), CV_8UC3);
+    for (int i = 0; i < markers.rows; i++) {
+        for (int j = 0; j < markers.cols; j++) {
+            int index = markers.at<int>(i, j);
+            if (index > 0 && index <= colors.size())
+                outputImage.at<Vec3b>(i, j) = colors[index - 1];
+            else
+                outputImage.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+        }
+    }
+
+    // Display the original image and the watershed result
     namedWindow("Original Image", WINDOW_NORMAL);
-    namedWindow("Mask", WINDOW_NORMAL);
-    namedWindow("Foreground", WINDOW_NORMAL);
+    namedWindow("Watershed Result", WINDOW_NORMAL);
     imshow("Original Image", image);
-    imshow("Mask", mask * 64);  // Scale the mask for better visualization
-    imshow("Foreground", foregroundImage);
+    imshow("Watershed Result", outputImage);
     waitKey(0);
 
     return 0;
