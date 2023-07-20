@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -8,7 +9,8 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
 #include <math.h>
-
+#include <fstream>
+#include <sstream>
 using namespace std;
 using namespace cv;
 
@@ -37,6 +39,7 @@ struct ImageInfo
 };
 
 struct TrayInfo {
+    int trayID;
     vector<ImageInfo> images;
 };
 
@@ -92,6 +95,8 @@ int findTotalGroundTruth(const vector<TrayInfo>& groundTruth, int categoryID) {
 
     for (const auto& tray : groundTruth) {
         for (const auto& image : tray.images) {
+            if (image.imageType == ImageType::Leftover3)
+                continue;
             for (const auto& foodItem : image.foodItems) {
                 if (foodItem.categoryID == categoryID) {
                     totalGroundTruths++;
@@ -118,6 +123,9 @@ double calculateAP(const vector<TrayInfo>& groundTruth, const vector<TrayInfo>& 
         for (size_t j = 0; j < groundTruth[i].images.size(); ++j) {
             // Find the specific class (food category) in the tray and compute TP and FP
             // Iterate over each gt food, looking for foods with the given ID
+            if (groundTruth[i].images[j].imageType == ImageType::Leftover3)
+                continue;
+
             for (const FoodItemInfo& gtFood : groundTruth[i].images[j].foodItems) {  
                 
                 if (gtFood.categoryID == categoryID) {
@@ -200,6 +208,9 @@ double calculateMIoU(const vector<TrayInfo>& groundTruth, const vector<TrayInfo>
 
     for (size_t i = 0; i < groundTruth.size(); ++i) {
         for (size_t j = 0; j < groundTruth[i].images.size(); ++j) {
+            if (groundTruth[i].images[j].imageType == ImageType::Leftover3)
+                continue;
+
             const ImageInfo& gtImageInfo = groundTruth[i].images[j];
             const ImageInfo& predImageInfo = predictions[i].images[j];
 
@@ -235,10 +246,79 @@ double calculateLeftover(const ImageInfo & beforeImage, const ImageInfo & afterI
     return leftoverRatio;
 }
 
+void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
+{
+    ifstream file(filename);
+    if (!file)
+    {
+        cerr << "Error opening file: " << filename << endl;
+        return;
+    }
+
+    string line;
+    getline(file, line); 
+
+    TrayInfo currentTray;
+    int prevTrayID = -1;
+
+    while (getline(file, line))
+    {
+        istringstream iss(line);
+        int trayID, categoryID, x, y, width, height;
+        string imagePath;
+        int imageTypeInt;
+
+        if (iss >> imagePath >> imageTypeInt >> categoryID >> x >> y >> width >> height)
+        {
+            ImageType imageType = static_cast<ImageType>(imageTypeInt);
+
+            if (trayID != prevTrayID)
+            {
+                // Start a new tray
+                if (!currentTray.images.empty())
+                {
+                    groundTruth.push_back(currentTray);
+                }
+                currentTray.trayID = trayID;
+                currentTray.images.clear();
+                prevTrayID = trayID;
+            }
+
+            FoodItemInfo foodItem;
+            foodItem.categoryID = categoryID;
+            foodItem.x = x;
+            foodItem.y = y;
+            foodItem.width = width;
+            foodItem.height = height;
+
+            // Load segmentation mask from imagePath (to be implemented)
+
+            ImageInfo imageInfo;
+            imageInfo.imageType = imageType;
+            imageInfo.foodItems.push_back(foodItem);
+
+            currentTray.images.push_back(imageInfo);
+        }
+    }
+
+    // Add the last tray to the groundTruth vector
+    if (!currentTray.images.empty())
+    {
+        groundTruth.push_back(currentTray);
+    }
+
+    file.close();
+}
+
 int main()
 {
     vector<TrayInfo> groundTruth; // Load ground truth data 
     vector<TrayInfo> predictions; // Load predicted data 
+
+    string fileName = "ground_truth.txt"; // Replace with the actual file path
+
+    // Read the ground truth file and populate the groundTruth vector
+    readGroundTruthFile(fileName, groundTruth);
 
     // Calculate and display the mean Average Precision (mAP) for food localization
     double mAP = calculateMAP(groundTruth, predictions);
@@ -292,21 +372,41 @@ int main()
                 leftover3gtImage = &gtImage;
         }
 
-        double PredictedLeftoverRatio = calculateLeftover(*beforeMealPredImage, *leftover1PredImage);        
-        cout << "Tray: " << i << " Image: Prediction leftover 1  Leftover Ratio: " << PredictedLeftoverRatio << endl;   
-        double GroundTruthLeftoverRatio = calculateLeftover(*beforeMealgtImage, *leftover1gtImage);
-        cout << "Tray: " << i << " Image: Ground truth leftover 1  Leftover Ratio: " << PredictedLeftoverRatio << endl;
+        if (beforeMealPredImage != nullptr && leftover1PredImage != nullptr)
+        {
+            double PredictedLeftoverRatio = calculateLeftover(*beforeMealPredImage, *leftover1PredImage);
+            cout << "Tray: " << i << " Image: Prediction leftover 1  Leftover Ratio: " << PredictedLeftoverRatio << endl;
+        }
+        if (beforeMealgtImage != nullptr && leftover1gtImage != nullptr)
+        {
+            double GroundTruthLeftoverRatio = calculateLeftover(*beforeMealgtImage, *leftover1gtImage);
+            cout << "Tray: " << i << " Image: Ground truth leftover 1  Leftover Ratio: " << GroundTruthLeftoverRatio << endl;
+        }
 
-        double PredictedLeftoverRatio2 = calculateLeftover(*beforeMealPredImage, *leftover2PredImage);
-        cout << "Tray: " << i << " Image: Prediction leftover 2  Leftover Ratio: " << PredictedLeftoverRatio2 << endl;
-        double GroundTruthLeftoverRatio2 = calculateLeftover(*beforeMealgtImage, *leftover2gtImage);
-        cout << "Tray: " << i << " Image: Ground truth leftover 2  Leftover Ratio: " << GroundTruthLeftoverRatio2 << endl;
+        if (beforeMealPredImage != nullptr && leftover2PredImage != nullptr)
+        {
+            double PredictedLeftoverRatio2 = calculateLeftover(*beforeMealPredImage, *leftover2PredImage);
+            cout << "Tray: " << i << " Image: Prediction leftover 2  Leftover Ratio: " << PredictedLeftoverRatio2 << endl;
+        }
+        if (beforeMealgtImage != nullptr && leftover2gtImage != nullptr)
+        {
+            double GroundTruthLeftoverRatio2 = calculateLeftover(*beforeMealgtImage, *leftover2gtImage);
+            cout << "Tray: " << i << " Image: Ground truth leftover 2  Leftover Ratio: " << GroundTruthLeftoverRatio2 << endl;
+        }
 
-        double PredictedLeftoverRatio3 = calculateLeftover(*beforeMealPredImage, *leftover3PredImage);
-        cout << "Tray: " << i << " Image: Prediction leftover 3  Leftover Ratio: " << PredictedLeftoverRatio3 << endl;
-        double GroundTruthLeftoverRatio3 = calculateLeftover(*beforeMealgtImage, *leftover3gtImage);
-        cout << "Tray: " << i << " Image: Ground truth leftover 3  Leftover Ratio: " << GroundTruthLeftoverRatio3 << endl << endl;
+        if (beforeMealPredImage != nullptr && leftover3PredImage != nullptr)
+        {
+            double PredictedLeftoverRatio3 = calculateLeftover(*beforeMealPredImage, *leftover3PredImage);
+            cout << "Tray: " << i << " Image: Prediction leftover 3  Leftover Ratio: " << PredictedLeftoverRatio3 << endl;
+        }
+        if (beforeMealgtImage != nullptr && leftover3gtImage != nullptr)
+        {
+            double GroundTruthLeftoverRatio3 = calculateLeftover(*beforeMealgtImage, *leftover3gtImage);
+            cout << "Tray: " << i << " Image: Ground truth leftover 3  Leftover Ratio: " << GroundTruthLeftoverRatio3 << endl;
+        }
      }
 
+    return 0;
+}
     return 0;
 }
