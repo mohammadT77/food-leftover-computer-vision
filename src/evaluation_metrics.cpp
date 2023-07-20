@@ -11,6 +11,8 @@
 #include <math.h>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
+
 using namespace std;
 using namespace cv;
 
@@ -246,6 +248,47 @@ double calculateLeftover(const ImageInfo & beforeImage, const ImageInfo & afterI
     return leftoverRatio;
 }
 
+// Function to split food masks in the input image and store them as pairs of mask and ID
+vector<pair<Mat, int>> splitFoodMasks(const Mat& inputImage)
+{
+    vector<pair<Mat, int>> foodMasks;
+
+    // Create a set to keep track of unique pixel values (food IDs)
+    unordered_set<int> foodIDs;
+
+    for (int y = 0; y < inputImage.rows; y++)
+        for (int x = 0; x < inputImage.cols; x++)
+        {
+            // Get the pixel value (food ID) at the current position
+            int pixelValue = inputImage.at<uchar>(y, x);
+
+            if (pixelValue != 0 && foodIDs.find(pixelValue) == foodIDs.end())
+                foodIDs.insert(pixelValue);
+            
+        }
+    
+    // Create an image for each unique food ID and copy the corresponding mask into it
+    for (int foodID : foodIDs)
+    {
+        Mat foodMask = Mat::zeros(inputImage.size(), CV_8UC1);
+
+        for (int y = 0; y < inputImage.rows; y++)
+        {
+            for (int x = 0; x < inputImage.cols; x++)
+            {
+                int pixelValue = inputImage.at<uchar>(y, x);
+
+                if (pixelValue == foodID)
+                    foodMask.at<uchar>(y, x) = 255;     
+            }
+        }
+
+        foodMasks.push_back(make_pair(foodMask, foodID));
+    }
+
+    return foodMasks;
+}
+
 void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
 {
     ifstream file(filename);
@@ -260,15 +303,19 @@ void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
 
     TrayInfo currentTray;
     int prevTrayID = -1;
+    int cnt = 0;
+    Mat foodMask;
 
     while (getline(file, line))
     {
         istringstream iss(line);
         int trayID, categoryID, x, y, width, height;
         string imagePath;
+        string prevImagePath;
         int imageTypeInt;
 
-        if (iss >> imagePath >> imageTypeInt >> categoryID >> x >> y >> width >> height)
+
+        if (iss >> trayID >> imagePath >> imageTypeInt >> categoryID >> x >> y >> width >> height)
         {
             ImageType imageType = static_cast<ImageType>(imageTypeInt);
 
@@ -276,9 +323,8 @@ void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
             {
                 // Start a new tray
                 if (!currentTray.images.empty())
-                {
                     groundTruth.push_back(currentTray);
-                }
+                
                 currentTray.trayID = trayID;
                 currentTray.images.clear();
                 prevTrayID = trayID;
@@ -291,7 +337,29 @@ void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
             foodItem.width = width;
             foodItem.height = height;
 
-            // Load segmentation mask from imagePath (to be implemented)
+            // Add the gt segmentation masks of the food related to the current line to groundTruth 
+            if (imagePath != prevImagePath || cnt == 0) {
+                Mat foodMask = imread(imagePath);
+
+                if (foodMask.empty())
+                    cerr << "Error: Could not load the image: " << foodMask << endl;
+
+                vector<pair<Mat, int>> foodMasksWithID = splitFoodMasks(foodMask);
+
+
+                for (const auto& image : currentTray.images) {
+                    if (image.imageType == imageType) {
+                        for (const auto& food : image.foodItems) {
+                            for (const auto& maskWithID : foodMasksWithID) {
+                                if (foodItem.categoryID == maskWithID.second) {
+                                    foodItem.segmentationMask = maskWithID.first;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             ImageInfo imageInfo;
             imageInfo.imageType = imageType;
@@ -299,16 +367,17 @@ void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
 
             currentTray.images.push_back(imageInfo);
         }
+        cnt++;
     }
 
     // Add the last tray to the groundTruth vector
-    if (!currentTray.images.empty())
-    {
-        groundTruth.push_back(currentTray);
-    }
+    groundTruth.push_back(currentTray);
+
 
     file.close();
 }
+
+
 
 int main()
 {
@@ -406,7 +475,5 @@ int main()
         }
      }
 
-    return 0;
-}
     return 0;
 }
