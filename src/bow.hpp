@@ -49,6 +49,11 @@ struct DistanceIndexPair {
         return distance > other.distance;
     }
 
+    bool operator>(const DistanceIndexPair& other) const {
+        // Reverse the comparison to maintain a min-heap
+        return distance < other.distance;
+    }
+
     bool operator==(const DistanceIndexPair& other) const {
         // Reverse the comparison to maintain a min-heap
         return classIndex == other.classIndex;
