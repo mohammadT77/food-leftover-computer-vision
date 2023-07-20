@@ -89,9 +89,12 @@ Rect getSegmentedFoodRect(const Mat& img, const Mat& mask){
     return unionRect;
 }
 
+Mat getCroppedSegmentedFoodImage(const Mat& img, const Rect& rect) {
+    return img(rect);
+}
 
 Mat getCroppedSegmentedFoodImage(const Mat& img, const Mat& mask) {
-    return img(getSegmentedFoodRect(img, mask));
+    return getCroppedSegmentedFoodImage(img, getSegmentedFoodRect(img, mask));
 }
 
 Mat getGrabCutSegmentedFoodImage(const Mat& croppedImage) {
@@ -124,166 +127,199 @@ Mat getGrabCutSegmentedFoodImage(const Mat& croppedImage) {
     // imshow("Mask", mask * 64);  // Scale the mask for better visualization
     // imshow("Foreground", foregroundImage);
     // waitKey(0);
-    return result;
+    return foregroundImage;
 }
 
-vector<pair<Mat,BOWResult>> findPlatesSuperTypes(const vector<Mat>& croppedPlates, vector<BOWResult> bowResults, const vector<vector<DistanceIndexPair>>& trainDists) {
-    map<int,int> resultIdx;
-    vector<pair<Mat,BOWResult>> result;
+struct PlateDistSuperType {
+    int plateIdx;
+    int bowIdx;
+    double dist;
+
+    friend std::ostream& operator<<(std::ostream& os, const PlateDistSuperType& p) {
+        os << '(' << p.plateIdx << ","  << p.bowIdx << "):" << p.dist;
+        return os;
+    }
+};
+
+
+bool comparePlates_dist(const PlateDistSuperType& p1, const PlateDistSuperType& p2) {
+    return p1.dist < p2.dist;
+}
+
+bool comparePlates_bow(const PlateDistSuperType& p1, const PlateDistSuperType& p2) {
+    return p1.bowIdx == p2.bowIdx;
+}
+bool comparePlates_plate(const PlateDistSuperType& p1, const PlateDistSuperType& p2) {
+    return p1.plateIdx == p2.plateIdx;
+}
+
+map<int,int> findPlatesSuperTypes(const vector<Mat>& croppedPlates, vector<BOWResult> bowResults, const vector<vector<DistanceIndexPair>>& trainDists) {
+    map<int,int> result;
+    for (int i=0; i < croppedPlates.size(); i++) result[i] = -1;
+
     double dists[croppedPlates.size()][bowResults.size()] = {-1.0f};
     for (int i=0; i<croppedPlates.size(); i++){
         for (int j=0; j<bowResults.size(); j++){
             vector<DistanceIndexPair> resultDists = process_image(croppedPlates[i], bowResults[j]);
-            // double sumDists = 0;
-            // for (const auto& dist: resultDists)
-            //     sumDists+=dist.distance;
-            dists[i][j] = resultDists[0].distance;//sumDists/resultDists.size();
+            double sumDists = 0;
+            for (const auto& dist: resultDists)
+                sumDists+=dist.distance;
+            dists[i][j] = sumDists/resultDists.size();
         }
     }
-    vector<pair<int,int>> sortedDists = {{0,0}};
+    vector<PlateDistSuperType> plateDists;
     for (int j=0; j<bowResults.size(); j++){
         for (int i=0; i<croppedPlates.size(); i++){
-            if (i==0 && j==0) continue;
             double d = dists[i][j];
-            bool inserted=false;
-            for (int x=0; x < sortedDists.size(); x++){
-                pair<int,int> p = sortedDists[x];
-                
-                if (d < dists[p.first][p.second]) {
-                    sortedDists.insert(sortedDists.begin()+x,{i,j});
-                    inserted=true;
-                    break;
-                }
-            }
-            if (!inserted) {
-                sortedDists.push_back({i,j});
-            }
-            
+            plateDists.push_back({i,j, d});
         }
     }
-    for (const auto& e:sortedDists) cout << e.first << e.second << ':'<< dists[e.first][e.second] <<endl;
-    for (int i=0; i<croppedPlates.size(); i++){
-        int selected_j;
-        for (const auto& e:sortedDists){
-            if(e.first==i){
-                selected_j = e.second;
-                result.push_back({croppedPlates[i], bowResults[e.second]});
+
+    // sort(plateDists.begin(), plateDists.end(), comparePlates_plate);
+    sort(plateDists.begin(), plateDists.end(), comparePlates_dist);
+    // cout << "Plates1: ";
+    // for (const auto& p: plateDists) cout << p << ", ";
+    // cout << endl;
+    // sort(plateDists.begin(), plateDists.end(), comparePlates_bow);
+    // cout << "Plates2: ";
+    // for (const auto& p: plateDists) cout << p << ", ";
+    // cout << endl;
+    // sort(plateDists.begin(), plateDists.end(), comparePlates_plate);
+    // cout << "Plates3: ";
+    // for (const auto& p: plateDists) cout << p << ", ";
+    // cout << endl;
+    // cout << endl;
+    vector<PlateDistSuperType> res;
+    res.push_back(plateDists[0]);
+    for (const auto& p: plateDists) {
+        PlateDistSuperType newOne;
+        bool flag = false;
+        for (const auto& r: res){
+            if (p.plateIdx != r.plateIdx && p.bowIdx != r.bowIdx){
+                newOne = p;
+                flag=true;
                 break;
             }
         }
-        for (int x=0;x<sortedDists.size();x++){
-            if (sortedDists[x].second==selected_j)
-                sortedDists.erase(sortedDists.begin()+x);
-        }
+        if (flag) res.push_back(newOne);
     }
+    cout << "PlatesRes: ";
+    for (const auto& p: res) cout << p << ", ";
+    cout << endl;
+
+    // for (const auto& p: plateDists) {
+    //     for (const )
+    // }
     return result;
 }
 
 
+int calculateAmount(const Mat& gcImage) {
+    Mat grayImg;
+    cvtColor(gcImage, grayImg, COLOR_BGR2GRAY);
+    return countNonZero(grayImg);
+}
+
+vector<DistanceIndexPair> evaluateFoodType(const Mat& foodImage, const BOWResult& bowResult){
+    return process_image(foodImage, bowResult);
+}
+
+
+map<int, pair<Mat, int>> processTray(Mat& trayImage, const vector<BOWResult>& bowResults, const vector<vector<DistanceIndexPair>>& trainDists) {
+    vector<Vec3f> circles;
+    vector<pair<Point,int>> circlesData;
+
+    vector<Mat> extractedRegions = extractPlates(trayImage, circles, circlesData);
+
+    vector<Mat> croppedImages;
+    vector<Mat> masks;
+    vector<Rect> rects;
+    // iterate over each circular region (corresponding to the two plates)
+    for (int j = 0; j < extractedRegions.size(); j++) {
+        Mat segFoodMask = extractPlateFoodMask(trayImage, extractedRegions[j], circlesData[j]);
+        masks.push_back(segFoodMask);
+        Mat segFood = getSegmentedFoodImage(trayImage, segFoodMask);
+        Rect foodRect = getSegmentedFoodRect(trayImage, segFoodMask);
+        rects.push_back(foodRect);
+        Mat croppedImage = getCroppedSegmentedFoodImage(trayImage, foodRect);
+        // imshow("Segmented Food2", croppedImage);
+        Mat gcResult = getGrabCutSegmentedFoodImage(croppedImage);
+        croppedImages.push_back(gcResult);
+        
+        
+    }
+    map<int, pair<Mat, int>> result;
+    map<int,int> plateSuperTypes = findPlatesSuperTypes(croppedImages, bowResults, trainDists);
+    for(const auto& entry: plateSuperTypes){
+        const Mat& croppedImage = croppedImages[entry.first];
+        const BOWResult& bowResult = bowResults[entry.second];
+        const Mat& mask = masks[entry.first];
+        const Rect& rect = rects[entry.first];
+        const Point centerOfRect = (rect.br()+rect.tl()) / 2;
+        
+        Mat _mask(trayImage.size(), trayImage.type(), Scalar(0,0,0));
+        int amount = calculateAmount(croppedImage);
+        string type;
+        if (bowResult.label == "breadsalad" || bowResult.label == "primi"){
+            vector<DistanceIndexPair> foodDists = evaluateFoodType(croppedImage, bowResult);
+            type = bowResult.label + ": " + to_string(foodDists[0].classIndex);
+            if (bowResult.label == "breadsalad") _mask.setTo(Scalar(255,0,0), mask);
+            else _mask.setTo(Scalar(0,255,0), mask);
+            result[foodDists[0].classIndex] = {croppedImage, amount};
+        }
+        else if(bowResult.label == "secondi") {
+            vector<DistanceIndexPair> foodDists = evaluateFoodType(croppedImage, bowResult);
+            type=bowResult.label + ": " + to_string(foodDists[0].classIndex) + ", " + to_string(foodDists[1].classIndex);
+            _mask.setTo(Scalar(0,0,255), mask);
+            result[foodDists[0].classIndex] = {croppedImage, amount};
+        }
+
+        
+        
+        trayImage -= _mask * 0.7;
+        putText(trayImage, type,centerOfRect,FONT_HERSHEY_DUPLEX,1,Scalar(255,255,255),2,false);
+        waitKey(0);
+    }
+
+    return result;
+}
+
+
+
 int main(int argc, char* argv[]) {
  
-    Mat img1 = imread(argv[1], IMREAD_COLOR);
+    Mat img1 = imread(argv[1]);
+    Mat img2 = imread(argv[2]);
 
     if (img1.empty()) {
         cout << "Could not open or find the image" << endl;
         return -1;
     }
-    namedWindow("Original image", WINDOW_NORMAL);
-    namedWindow("Segmented Food1", WINDOW_NORMAL);
-    namedWindow("Segmented Food2", WINDOW_NORMAL);
 
-    imshow("Original image", img1);
+    if (img2.empty()) {
+        cout << "Could not open or find the image" << endl;
+        return -1;
+    }
 
-    
-    // Train BOVWs
-    BOWResult general_bowResult; general_bowResult.label = "general";
+
     BOWResult breadsalad_bowResult; breadsalad_bowResult.label = "breadsalad";
     BOWResult primi_bowResult; primi_bowResult.label = "primi";
     BOWResult secondi_bowResult; secondi_bowResult.label = "secondi";
 
     // vector<DistanceIndexPair> general_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/refined", 2000}, general_bowResult);
-    vector<DistanceIndexPair> breadsalad_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/12_13", 200}, breadsalad_bowResult);
-    vector<DistanceIndexPair> primi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/primi", 200}, primi_bowResult);
-    vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 200}, secondi_bowResult);
-    
-    // cout << "general_trainDists: ";
-    // for (const auto& e:general_trainDists) {
-    //     cout << e << ',';
-    // } cout << endl;
-
-    cout << "breadsalad_trainDists: ";
-    for (const auto& e:breadsalad_trainDists) {
-        cout << e << ',';
-    } cout << endl;
-    cout << "primi_bowResult: ";
-    for (const auto& e:primi_trainDists) {
-        cout << e << ',';
-    } cout << endl;
-    cout << "secondi_bowResult: ";
-    for (const auto& e:secondi_trainDists) {
-        cout << e << ',';
-    } cout << endl;
+    vector<DistanceIndexPair> breadsalad_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/12_13", 30}, breadsalad_bowResult);
+    vector<DistanceIndexPair> primi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/primi", 30}, primi_bowResult);
+    vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 30}, secondi_bowResult);
 
 
-    vector<Vec3f> circles;
-    vector<pair<Point,int>> circlesData;
+    map<int, pair<Mat, int>> tray1Result = processTray(img1,{breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
 
-    vector<Mat> extractedRegions = extractPlates(img1, circles, circlesData);
+    map<int, pair<Mat, int>> tray2Result = processTray(img2,{breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
 
-    vector<Mat> croppedImages;
-    // iterate over each circular region (corresponding to the two plates)
-    for (int j = 0; j < extractedRegions.size(); j++) {
-        Mat segFoodMask = extractPlateFoodMask(img1, extractedRegions[j], circlesData[j]);
-        // imshow("Segmented Food1", segFoodMask);
-        Mat segFood = getSegmentedFoodImage(img1, segFoodMask);
-
-        Mat croppedImage = getCroppedSegmentedFoodImage(img1, segFoodMask);
-        // imshow("Segmented Food2", croppedImage);
-        Mat gcResult = getGrabCutSegmentedFoodImage(croppedImage);
-        croppedImages.push_back(gcResult);
-        
-        // vector<DistanceIndexPair> result = process_image(croppedImage, breadsalad_bowResult);
-        // for (const auto& e:result) {
-        //     cout << e << ',';
-        // } cout << endl;
-
-        // result = process_image(croppedImage, primi_bowResult);
-        // for (const auto& e:result) {
-        //     cout << e << ',';
-        // } cout << endl;
-
-        // result = process_image(croppedImage, secondi_bowResult);
-        // for (const auto& e:result) {
-        //     cout << e << ',';
-        // } cout << endl;
-        
-        
-        // waitKey(0);
-        
-
-        // imshow("Plate", extractedRegions[j]);
-        // waitKey(0);
-        
-    }
-
-    // for (const auto& img: croppedImages){
-    //     vector<DistanceIndexPair> generalDists = process_image(img, general_bowResult);
-    //     imshow("Segmented Food2", img);
-    //     cout << "general result: ";
-    //     for (const auto& e:generalDists) {
-    //         cout << e << ',';
-    //     } cout << endl;
-    //     waitKey(0);
-    // }
-    
-
-    vector<BOWResult> bowResults = {breadsalad_bowResult,primi_bowResult,secondi_bowResult};
-    vector<pair<Mat,BOWResult>> plateSuperTypes = findPlatesSuperTypes(croppedImages, bowResults, {breadsalad_trainDists,primi_trainDists,secondi_trainDists});
-    for(const auto& entry: plateSuperTypes){
-        cout << entry.second.label << endl;
-        imshow("Segmented Food2", entry.first);
-        waitKey(0);
-    }
-
+    namedWindow("Tray1", WINDOW_NORMAL);
+    namedWindow("Tray2", WINDOW_NORMAL);
+    imshow("Tray1", img1);
+    imshow("Tray2", img2);
+    waitKey(0);
     return 0;
 }

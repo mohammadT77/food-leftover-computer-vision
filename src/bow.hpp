@@ -19,7 +19,7 @@
 
 
 struct KMeanConfig {
-    cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 20, 0.01);
+    cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 20, 0.1);
     int attempts = 20;
     int flags = cv::KMEANS_RANDOM_CENTERS;
 };

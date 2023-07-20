@@ -27,14 +27,16 @@ map<int, vector<Mat>> load_dictionary(const string& folder) {
 }
 
 void calculate_features(const Mat& image, vector<KeyPoint>& keyPoint, Mat& descriptors ) {
-    shared_ptr<ORB> orb = ORB::create();
-    orb->detectAndCompute(image, noArray(), keyPoint, descriptors);
-    descriptors.convertTo(descriptors, CV_32F);
+    shared_ptr<SIFT> algo1 = SIFT::create();
+    shared_ptr<DAISY> algo2 = DAISY::create();
+    algo1->detect(image, keyPoint);
+    // algo->detectAndCompute(image, noArray(), keyPoint, descriptors);
+    algo2->compute(image, keyPoint, descriptors);
+    // descriptors.convertTo(descriptors, CV_32F);
 }
 
 map<int, vector<Mat>> extract_features(const map<int, vector<Mat>>& images, vector<Mat>& descriptor_list) {
     map<int, vector<Mat>> feat_vectors;
-    shared_ptr<ORB> orb = ORB::create();
 
     for (const auto& entry : images) {
         const int key = entry.first;
@@ -161,7 +163,7 @@ void assignDescriptorsToVisualWordsBF(const Mat& image, const vector<KeyPoint>& 
     vector<vector<DMatch>> matches;
     matcher.knnMatch(descriptors, clusters, matches, 2);
     
-    const float ratioThreshold = 0.8f; // Ratio threshold for discarding ambiguous matches
+    const float ratioThreshold = 0.9f; // Ratio threshold for discarding ambiguous matches
 
     for (const vector<DMatch>& match : matches) {
         if (match[0].distance < ratioThreshold * match[1].distance) {
