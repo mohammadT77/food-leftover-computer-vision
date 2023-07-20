@@ -286,10 +286,19 @@ vector<DistanceIndexPair> process_image(const Mat& image, const vector<DistanceI
     vector<DistanceIndexPair> result;
 
     for (const auto& trainDist: trainDists) {
+        // cout << trainDist << "->";
         for (const auto& imgDist: imageDists) {
-            if (trainDist.classIndex == imgDist.classIndex) 
-                result.push_back({abs(imgDist.distance-trainDist.distance), imgDist.classIndex});
-        }   
+            
+            if (trainDist.classIndex == imgDist.classIndex) {
+                // cout << imgDist;
+                DistanceIndexPair dip;
+                dip.distance = abs(imgDist.distance-trainDist.distance);
+                dip.classIndex = imgDist.classIndex;
+                result.push_back(dip);
+                // cout << ": " << dip;
+            }
+        }  
+        // cout << endl;
     }
     return result;
 }
