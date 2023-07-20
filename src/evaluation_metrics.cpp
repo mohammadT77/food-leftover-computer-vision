@@ -1,49 +1,8 @@
-
-#include <iostream>
-#include <vector>
-#include <string>
-#include "opencv2/highgui.hpp"
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <array>
-#include <opencv2/opencv.hpp>
-#include <opencv2/imgproc.hpp>
-#include <math.h>
-#include <fstream>
-#include <sstream>
-#include <unordered_set>
+#include "evaluation_metrics.hpp"
 
 using namespace std;
 using namespace cv;
 
-// Enum to represent the type of image
-enum class ImageType
-{
-    BeforeMeal,
-    Leftover1,
-    Leftover2,
-    Leftover3
-};
-
-// Data structure to store information for each food item
-struct FoodItemInfo
-{
-    int categoryID;  // ID representing the food category
-    int x, y, width, height;  // Bounding box coordinates
-    Mat segmentationMask;
-};
-
-// Data structure to store information for each image
-struct ImageInfo
-{
-    ImageType imageType;  // Type of the image (BeforeMeal, Leftover1, Leftover2, Leftover3)
-    vector<FoodItemInfo> foodItems;  // Vector to store information of each food item in the image
-};
-
-struct TrayInfo {
-    int trayID;
-    vector<ImageInfo> images;
-};
 
 // Function to calculate IoU between two bounding boxes
 double calculateIoU(const FoodItemInfo& groundTruth, const FoodItemInfo& prediction) {
@@ -379,12 +338,10 @@ void readGroundTruthFile(const string& filename,vector<TrayInfo>& groundTruth)
 
 
 
-int main()
-{
+int eval(vector<TrayInfo> predictions){
     vector<TrayInfo> groundTruth; // Load ground truth data 
-    vector<TrayInfo> predictions; // Load predicted data 
 
-    string fileName = "ground_truth.txt"; // Replace with the actual file path
+    string fileName = "../data/ground_truth.txt"; // Replace with the actual file path
 
     // Read the ground truth file and populate the groundTruth vector
     readGroundTruthFile(fileName, groundTruth);

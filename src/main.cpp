@@ -1,5 +1,6 @@
 #include "segmentation.hpp"
 #include "bow.hpp"
+#include "evaluation_metrics.hpp"
 
 using namespace std;
 using namespace cv;
@@ -159,16 +160,16 @@ vector<PlateDistSuperType> findPlatesSuperTypes(const vector<Mat>& croppedPlates
 
     double dists[croppedPlates.size()][bowResults.size()] = {-1.0f};
     for (int i=0; i<croppedPlates.size(); i++){
-        cout << i;
+        // cout << i;
         for (int j=0; j<bowResults.size(); j++){
             vector<DistanceIndexPair> resultDists = process_image(croppedPlates[i], trainDists[j], bowResults[j]);
             sort(resultDists.begin(), resultDists.end(), greater<DistanceIndexPair>());
             double sumDists = 0;
-            cout << bowResults[j].label << ":";
-            for (const auto& dist: resultDists){
-                cout << dist << ",";
-                sumDists+=dist.distance;
-            } cout << endl;
+            // cout << bowResults[j].label << ":";
+            // for (const auto& dist: resultDists){
+            //     cout << dist << ",";
+            //     sumDists+=dist.distance;
+            // } cout << endl;
             dists[i][j] = (resultDists[0].distance-resultDists[1].distance);// sumDists/resultDists.size();
         }
     }
@@ -185,16 +186,16 @@ vector<PlateDistSuperType> findPlatesSuperTypes(const vector<Mat>& croppedPlates
     for (int j=0; j<bowResults.size(); j++){
         for (int i=0; i<croppedPlates.size(); i++){
             double d = dists[i][j];
-            if (d!=0)
-                plateDists.push_back({i,j, d/sumBOWResults[j]});
+            
+            plateDists.push_back({i,j, d/sumBOWResults[j]});
         }
     }
 
     // sort(plateDists.begin(), plateDists.end(), comparePlates_plate);
     sort(plateDists.begin(), plateDists.end(), comparePlates_dist);
-    cout << "Plates1: ";
-    for (const auto& p: plateDists) cout << p << ", ";
-    cout << endl;
+    // cout << "Plates1: ";
+    // for (const auto& p: plateDists) cout << p << ", ";
+    // cout << endl;
     // sort(plateDists.begin(), plateDists.end(), comparePlates_bow);
     // cout << "Plates2: ";
     // for (const auto& p: plateDists) cout << p << ", ";
@@ -213,9 +214,9 @@ vector<PlateDistSuperType> findPlatesSuperTypes(const vector<Mat>& croppedPlates
             result[p.plateIdx] = p.bowIdx;
         }
     }
-    cout << "PlatesRes: ";
-    for (const auto& p: res) cout << p << ", ";
-    cout << endl;
+    // cout << "PlatesRes: ";
+    // for (const auto& p: res) cout << p << ", ";
+    // cout << endl;
 
     return res;
 }
@@ -252,10 +253,6 @@ map<int, pair<Mat, int>> processTray(Mat& trayImage, const vector<BOWResult>& bo
         // imshow("Segmented Food2", croppedImage);
         // Mat gcResult = getGrabCutSegmentedFoodImage(croppedImage);
         croppedImages.push_back(croppedImage);
-
-        
-
-        waitKey(0);
         
         
     }
@@ -296,7 +293,7 @@ map<int, pair<Mat, int>> processTray(Mat& trayImage, const vector<BOWResult>& bo
 
 
 
-int main(int argc, char* argv[]) {
+int _main(int argc, char* argv[]) {
  
     Mat img1 = imread(argv[1]);
     Mat img2 = imread(argv[2]);
@@ -320,14 +317,125 @@ int main(int argc, char* argv[]) {
     vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 150}, secondi_bowResult);
 
 
-
     map<int, pair<Mat, int>> tray1Result = processTray(img1,{breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
     map<int, pair<Mat, int>> tray2Result = processTray(img2,{breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
 
+    
     namedWindow("Tray1", WINDOW_NORMAL);
     namedWindow("Tray2", WINDOW_NORMAL);
     imshow("Tray1", img1);
     imshow("Tray2", img2);
     waitKey(0);
+    return 0;
+}
+
+vector<FoodItemInfo> processFoodItemInfo(const Mat& trayImage, const vector<BOWResult>& bowResults, const vector<vector<DistanceIndexPair>>& trainDists){
+    vector<FoodItemInfo> result;
+    vector<Vec3f> circles;
+    vector<pair<Point,int>> circlesData;
+
+    vector<Mat> extractedRegions = extractPlates(trayImage, circles, circlesData);
+    // for (const auto& m: extractedRegions){imshow("X", m); waitKey(0);}
+    vector<Mat> croppedImages;
+    vector<Mat> masks;
+    vector<Rect> rects;
+    // iterate over each circular region (corresponding to the two plates)
+    for (int j = 0; j < extractedRegions.size(); j++) {
+        Mat segFoodMask = extractPlateFoodMask(trayImage, extractedRegions[j], circlesData[j]);
+        masks.push_back(segFoodMask);
+        Mat segFood = getSegmentedFoodImage(trayImage, segFoodMask);
+        Rect foodRect = getSegmentedFoodRect(segFood, segFoodMask);
+        rects.push_back(foodRect);
+        Mat croppedImage = getCroppedSegmentedFoodImage(segFood, foodRect);
+        // imshow("Segmented Food2", croppedImage);
+        // Mat gcResult = getGrabCutSegmentedFoodImage(croppedImage);
+        croppedImages.push_back(croppedImage);
+        
+        
+    }
+    // map<int, pair<Mat, int>> result;
+    vector<PlateDistSuperType> plateSuperTypes = findPlatesSuperTypes(croppedImages, bowResults, trainDists);
+    for(const PlateDistSuperType& entry: plateSuperTypes){
+        FoodItemInfo itemInfo;
+        const Mat& croppedImage = croppedImages[entry.plateIdx];
+        const BOWResult& bowResult = bowResults[entry.bowIdx];
+        const Mat& mask = masks[entry.plateIdx];
+        const Rect& rect = rects[entry.plateIdx];
+
+        itemInfo.x = rect.x;
+        itemInfo.y = rect.y;
+        itemInfo.width = rect.width;
+        itemInfo.height = rect.height;
+        itemInfo.segmentationMask = mask;
+
+        vector<DistanceIndexPair> foodDists = evaluateFoodType(croppedImage, bowResult);
+        // const Point centerOfRect = (rect.br()+rect.tl()) / 2;
+        
+        // Mat _mask(trayImage.size(), trayImage.type(), Scalar(0,0,0));
+        // int amount = calculateAmount(croppedImage);
+        // string type =  "(" + to_string(entry.plateIdx) + "," + to_string(entry.bowIdx) + ")" + bowResult.label + ": ";
+        
+        if (bowResult.label == "breadsalad" || bowResult.label == "primi"){
+            itemInfo.categoryID = foodDists[0].classIndex;
+            result.push_back(itemInfo);
+        
+        }
+        else if(bowResult.label == "secondi") {
+            
+            itemInfo.categoryID = foodDists[0].classIndex;
+            result.push_back(itemInfo);
+            itemInfo.categoryID = foodDists[1].classIndex;
+            result.push_back(itemInfo);
+            itemInfo.categoryID = foodDists[2].classIndex;
+            result.push_back(itemInfo);
+        }
+    }
+
+    return result;
+}
+
+
+
+vector<TrayInfo> prepareTrayInfo(const vector<BOWResult>& bowResults, const vector<vector<DistanceIndexPair>>& trainDists) {
+    vector<TrayInfo> result;
+    const string data_path = "../data/";
+    for (int i=1; i<=8; i++){
+        if (i==4) continue;
+        string trayPath = data_path+"tray"+to_string(i);
+        Mat food_image = imread(trayPath+"/food_image.jpg");
+        Mat leftover1 = imread(trayPath+"/leftover1.jpg");
+        Mat leftover2 = imread(trayPath+"/leftover2.jpg");
+        Mat leftover3 = imread(trayPath+"/leftover3.jpg");
+        cout << "Predict tray " << i <<endl;
+        TrayInfo trayInfo;
+        trayInfo.trayID = i;
+        try{
+            trayInfo.images = {
+                {ImageType::BeforeMeal, processFoodItemInfo(food_image, bowResults,trainDists)},
+                {ImageType::Leftover1, processFoodItemInfo(leftover1, bowResults,trainDists)},
+                {ImageType::Leftover2, processFoodItemInfo(leftover2, bowResults,trainDists)},
+                {ImageType::Leftover3, processFoodItemInfo(leftover3, bowResults,trainDists)}
+            };
+            result.push_back(trayInfo);
+        } catch (const std::exception& e) {
+
+        }
+    }
+    return result;
+}
+
+int main(int argc, char* argv[]) {
+ 
+    BOWResult breadsalad_bowResult; breadsalad_bowResult.label = "breadsalad";
+    BOWResult primi_bowResult; primi_bowResult.label = "primi";
+    BOWResult secondi_bowResult; secondi_bowResult.label = "secondi";
+    cout << "Training BOVWs..." <<endl;
+    vector<DistanceIndexPair> breadsalad_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/12_13", 150}, breadsalad_bowResult);
+    vector<DistanceIndexPair> primi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/primi", 150}, primi_bowResult);
+    vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 150}, secondi_bowResult);
+
+
+    vector<TrayInfo> predictions = prepareTrayInfo({breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
+    eval( predictions);
     return 0;
 }

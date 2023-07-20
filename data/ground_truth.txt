@@ -37,24 +37,6 @@ TrayID ImagePath ImageType CategoryID X Y Width Height
 3 leftover2_tray3.png Leftover2 2 277 140 224 260
 3 leftover2_tray3.png Leftover2 12 118 617 363 289
 3 leftover3_tray3.pngLeftover3 8 247 377 293 382
-4 food_image_mask_tray4.png BeforeMeal 12 805 56 417 352
-4 food_image_mask_tray4.png BeforeMeal 5 574 508 444 376
-4 food_image_mask_tray4.png BeforeMeal 11 188 127 357 340
-4 food_image_mask_tray4.png BeforeMeal 13 109 565 227 277
-4 food_image_mask_tray4.png BeforeMeal 7 384 117 219 266
-4 leftover1_tray4.png Leftover1 5 684 474 431 483
-4 leftover1_tray4.png Leftover1 7 390 100 165 166
-4 leftover1_tray4.png Leftover1 13 57 537 282 331
-4 leftover1_tray4.png Leftover1 11 160 92 244 257
-4 leftover1_tray4.png Leftover1 12 782 0 497 328
-4 leftover2_tray4.png Leftover2 13 112 606 265 317
-4 leftover2_tray4.png Leftover2 11 325 79 253 277
-4 leftover2_tray4.png Leftover2 7 362 301 165 160
-4 leftover2_tray4.png Leftover2 5 703 540 385 417
-4 leftover3_tray4.png Leftover3 11 283 119 159 129
-4 leftover3_tray4.png Leftover3 12 436 643 351 291
-4 leftover3_tray4.png Leftover3 13 43 757 182 132
-4 leftover3_tray4.png Leftover3 5 733 372 339 190
 5 food_image_mask_tray5.png BeforeMeal 10 730 519 378 284
 5 food_image_mask_tray5.png BeforeMeal 13 516 0 214 222
 5 food_image_mask_tray5.png BeforeMeal 8 731 294 293 389
