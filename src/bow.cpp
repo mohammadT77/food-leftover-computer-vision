@@ -182,7 +182,6 @@ void createHistogram(const map<int, Point2f>& visualWords, int numVisualWords, M
 }
 
 
-
 vector<DistanceIndexPair> compareHistogramsAndClassify(const Mat& histogram, const map<int, vector<Mat>>& bow) {
     priority_queue<DistanceIndexPair> closestDistances;
     map<int, vector<float>> distMap;
@@ -241,6 +240,10 @@ vector<DistanceIndexPair> process_image(const Mat& image, const Mat& words, cons
     return result;
 }
 
+vector<DistanceIndexPair> process_image(const Mat& image, const BOWResult& result) {
+    return process_image(image, result.visualWords, result.bow);
+}
+
 
 void prepareBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector<Mat>>& features, Mat& visualWords, map<int, vector<Mat>>& bow) {
     vector<Mat> descriptors_list = {};
@@ -249,6 +252,10 @@ void prepareBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector
     features = extract_features(images, descriptors_list);
     visualWords = kmeans(config.k, descriptors_list, config.kmean_config);
     bow = image_class(features, visualWords);    
+}
+
+void prepareBOW(BOWConfig config, BOWResult& result) {
+    prepareBOW(config, result.images, result.features, result.visualWords, result.bow);
 }
 
 vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, map<int, vector<Mat>>& images, map<int, vector<Mat>>& features, Mat& visualWords, map<int, vector<Mat>>& bow) {
@@ -267,6 +274,11 @@ vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, map<int, vector<
     }
     return result;
 }
+
+vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, BOWResult& result) {
+    return prepareEvaluatedBOW(config, result.images, result.features, result.visualWords, result.bow);
+}
+
 vector<DistanceIndexPair> process_image(const Mat& image, const vector<DistanceIndexPair>& trainDists, const Mat& words, const map<int, vector<Mat>>& bow) {
     vector<DistanceIndexPair> imageDists = process_image(image, words,bow);
     vector<DistanceIndexPair> result;
@@ -278,5 +290,9 @@ vector<DistanceIndexPair> process_image(const Mat& image, const vector<DistanceI
         }   
     }
     return result;
+}
+
+vector<DistanceIndexPair> process_image(const Mat& image, const vector<DistanceIndexPair>& trainDists, const BOWResult& bowResult) {
+    return process_image(image, trainDists, bowResult.visualWords, bowResult.bow);
 }
 

@@ -19,8 +19,8 @@
 
 
 struct KMeanConfig {
-    cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 10, 0.01);
-    int attempts = 15;
+    cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 20, 0.01);
+    int attempts = 20;
     int flags = cv::KMEANS_RANDOM_CENTERS;
 };
 
@@ -30,6 +30,14 @@ struct BOWConfig {
     std::string dir_path;
     int k;  // Number of clusters
     KMeanConfig kmean_config = default_kmean_config;
+};
+
+struct BOWResult {
+    std::string label = "";
+    std::map<int, std::vector<cv::Mat>> images;
+    std::map<int, std::vector<cv::Mat>> features;
+    cv::Mat visualWords; 
+    std::map<int, std::vector<cv::Mat>> bow;
 };
 
 struct DistanceIndexPair {
@@ -66,8 +74,12 @@ void assignDescriptorsToVisualWordsBF(const cv::Mat& image, const std::vector<cv
 void createHistogram(const std::map<int, cv::Point2f>& visualWords, int numVisualWords, cv::Mat& histogram);
 std::vector<DistanceIndexPair> compareHistogramsAndClassify(const cv::Mat& histogram, const std::map<int, std::vector<cv::Mat>>& bow);
 std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const cv::Mat& words, const std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const BOWResult& result);
 void prepareBOW(BOWConfig config, std::map<int, std::vector<cv::Mat>>& images, std::map<int, std::vector<cv::Mat>>& features, cv::Mat& visualWords, std::map<int, std::vector<cv::Mat>>& bow);
+void prepareBOW(BOWConfig config, BOWResult& result);
 std::vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, std::map<int, std::vector<cv::Mat>>& images, std::map<int, std::vector<cv::Mat>>& features, cv::Mat& visualWords, std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> prepareEvaluatedBOW(BOWConfig config, BOWResult& result);
 std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const std::vector<DistanceIndexPair>& trainDists, const cv::Mat& words, const std::map<int, std::vector<cv::Mat>>& bow);
+std::vector<DistanceIndexPair> process_image(const cv::Mat& image, const std::vector<DistanceIndexPair>& trainDists, const BOWResult& bowResult);
 
 #endif
