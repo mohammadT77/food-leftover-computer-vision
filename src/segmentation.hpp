@@ -17,6 +17,6 @@ cv::Mat drawFilledContours(const cv::Mat& segmentedImage, const std::vector<std:
 void applyColorMask(const cv::Mat& segmentedImage, const cv::Mat& color_mask, cv::Mat& newSegmentedFood);
 void colorFilter(cv::Mat* userdata, cv::Mat* new_image_ptr);
 void removeCircle(cv::Mat& imgLaplacian, cv::Mat& new_laplacian, const std::pair<cv::Point, int> circleData);
-
+void detectObject(const cv::Mat& inputImage, std::vector<cv::Vec3f>& circles);
 
 # endif

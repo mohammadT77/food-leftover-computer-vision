@@ -162,3 +162,91 @@ void removeCircle(Mat& imgLaplacian, Mat& new_laplacian, const std::pair<Point, 
         }
     }
 }
+
+
+void detectObject(const Mat& inputImage, vector<Vec3f>& circles) {
+    
+    Mat non_object = inputImage.clone();
+    for(const auto& circle : circles){
+        Point center(cvRound(circle[0]), cvRound(circle[1]));
+        int radius = cvRound(circle[2]);
+        cv::circle(non_object, center, radius, Scalar(0,0,0), -1);
+    }
+
+    Mat segmentation = Mat::zeros(non_object.size(), CV_8UC1);
+    for (int i = 0; i < non_object.cols; i++){
+        for (int j = 0; j < non_object.rows; j++){
+            int Blue = (int)non_object.at<Vec3b>(j,i)[0];
+            int Green = (int)non_object.at<Vec3b>(j,i)[1];
+            int Red = (int)non_object.at<Vec3b>(j,i)[2];
+            int distance1 = abs(Blue - Green); 
+            int distance2 = abs(Green - Red);
+            int distance3 = abs(Red - Blue);
+            if (((Blue - Red > 20) && (Blue - Green > 20))||((Red > Blue) && (Green > Blue) && (distance2 <= 21)) ){
+                continue;
+            }
+            else if (abs(distance1 - distance2) > 35 || abs(distance2 - distance3) > 37 || abs(distance3 - distance1) > 35){
+                segmentation.at<uchar>(j,i) = 255;    
+            }
+                        
+        }
+    }
+
+    Mat elementDilation = getStructuringElement(MORPH_ELLIPSE, Size(13,13));
+
+    Mat elementErosion = getStructuringElement(MORPH_RECT, Size(3,3));
+
+    // imshow("segmentation", segmentation);
+    // waitKey();
+
+    erode(segmentation, segmentation, elementErosion);
+    dilate(segmentation, segmentation, elementDilation);
+    dilate(segmentation, segmentation, elementDilation);
+    dilate(segmentation, segmentation, elementDilation);
+
+
+    // Find contours
+    std::vector<std::vector<Point>> contours;
+    std::vector<Vec4i> hierarchy;
+    findContours(segmentation, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+
+    std::vector<std::vector<Point>> filteredContours;
+
+    for (size_t i = 0; i < contours.size(); i++) {
+        double area = cv::contourArea(contours[i]);
+
+        if (area < 4500) {
+            continue;
+        }
+
+        bool isInsideAnotherContour = false;
+
+        for (int j = 0; j >= 0; j = hierarchy[j][0]) {
+            if (j != static_cast<int>(i) && pointPolygonTest(contours[j], contours[i][0], false) >= 0) {
+                isInsideAnotherContour = true;
+                break;
+            }
+        }
+
+        if (!isInsideAnotherContour) {
+            filteredContours.push_back(contours[i]);
+        }
+    }
+
+    Mat contour_image = Mat::zeros(segmentation.size(), CV_8UC3);
+    for (size_t i = 0; i < filteredContours.size(); i++) {
+        drawContours(contour_image, filteredContours, static_cast<int>(i), Scalar(0, 0, 255), 1);
+    }
+
+
+    for (size_t i = 0; i < filteredContours.size(); i++) {
+        // Find the minimum enclosing circle for the contour
+        cv::Point2f center;
+        float radius;
+        cv::minEnclosingCircle(filteredContours[i], center, radius);
+        radius = radius - 5;
+        Vec3f new_circle(center.x, center.y, radius);
+        circles.push_back(new_circle);
+
+    }
+}

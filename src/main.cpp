@@ -9,6 +9,8 @@ vector<Mat> extractPlates(const Mat& img, vector<Vec3f>& circles, vector<pair<Po
 
     // Find the circles
     circles = detectCircles(img);
+    detectObject(img, circles);
+    namedWindow("X", WINDOW_NORMAL);
 
     // Create a mask (for each plate) to fill non-plate regions with black (the region corresponding to plates are white)     
     for (size_t i = 0; i < circles.size(); i++)
@@ -230,7 +232,7 @@ map<int, pair<Mat, int>> processTray(Mat& trayImage, const vector<BOWResult>& bo
     vector<pair<Point,int>> circlesData;
 
     vector<Mat> extractedRegions = extractPlates(trayImage, circles, circlesData);
-
+    for (const auto& m: extractedRegions){imshow("X", m); waitKey(0);}
     vector<Mat> croppedImages;
     vector<Mat> masks;
     vector<Rect> rects;
