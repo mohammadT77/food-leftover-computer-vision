@@ -354,7 +354,9 @@ vector<FoodItemInfo> processFoodItemInfo(const Mat& trayImage, const vector<BOWR
         
     }
     // map<int, pair<Mat, int>> result;
+    
     vector<PlateDistSuperType> plateSuperTypes = findPlatesSuperTypes(croppedImages, bowResults, trainDists);
+    
     for(const PlateDistSuperType& entry: plateSuperTypes){
         FoodItemInfo itemInfo;
         const Mat& croppedImage = croppedImages[entry.plateIdx];
@@ -378,7 +380,6 @@ vector<FoodItemInfo> processFoodItemInfo(const Mat& trayImage, const vector<BOWR
         if (bowResult.label == "breadsalad" || bowResult.label == "primi"){
             itemInfo.categoryID = foodDists[0].classIndex;
             result.push_back(itemInfo);
-        
         }
         else if(bowResult.label == "secondi") {
             
@@ -400,7 +401,6 @@ vector<TrayInfo> prepareTrayInfo(const vector<BOWResult>& bowResults, const vect
     vector<TrayInfo> result;
     const string data_path = "../data/";
     for (int i=1; i<=8; i++){
-        if (i==4) continue;
         string trayPath = data_path+"tray"+to_string(i);
         Mat food_image = imread(trayPath+"/food_image.jpg");
         Mat leftover1 = imread(trayPath+"/leftover1.jpg");
@@ -412,7 +412,7 @@ vector<TrayInfo> prepareTrayInfo(const vector<BOWResult>& bowResults, const vect
         try{
             trayInfo.images = {
                 {ImageType::BeforeMeal, processFoodItemInfo(food_image, bowResults,trainDists)},
-                {ImageType::Leftover1, processFoodItemInfo(leftover1, bowResults,trainDists)},
+                {ImageType::Leftover1, processFoodItemInfo((i==4)?leftover2:leftover1, bowResults,trainDists)},
                 {ImageType::Leftover2, processFoodItemInfo(leftover2, bowResults,trainDists)},
                 {ImageType::Leftover3, processFoodItemInfo(leftover3, bowResults,trainDists)}
             };
@@ -430,9 +430,9 @@ int main(int argc, char* argv[]) {
     BOWResult primi_bowResult; primi_bowResult.label = "primi";
     BOWResult secondi_bowResult; secondi_bowResult.label = "secondi";
     cout << "Training BOVWs..." <<endl;
-    vector<DistanceIndexPair> breadsalad_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/12_13", 150}, breadsalad_bowResult);
-    vector<DistanceIndexPair> primi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/primi", 150}, primi_bowResult);
-    vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 150}, secondi_bowResult);
+    vector<DistanceIndexPair> breadsalad_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/12_13", 10}, breadsalad_bowResult);
+    vector<DistanceIndexPair> primi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/primi", 10}, primi_bowResult);
+    vector<DistanceIndexPair> secondi_trainDists = prepareEvaluatedBOW({"../data/bow_dictionary/secondi", 10}, secondi_bowResult);
 
 
     vector<TrayInfo> predictions = prepareTrayInfo({breadsalad_bowResult,primi_bowResult,secondi_bowResult},{breadsalad_trainDists,primi_trainDists,secondi_trainDists});
